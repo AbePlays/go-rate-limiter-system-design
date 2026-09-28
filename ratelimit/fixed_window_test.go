@@ -6,7 +6,7 @@ import (
 )
 
 func TestAllowsUpToLimit(t *testing.T) {
-	fw := New(3, time.Minute)
+	fw := NewFixedWindow(3, time.Minute)
 
 	for i := range 3 {
 		if d := fw.Allow("ip"); !d.Allowed {
@@ -21,7 +21,7 @@ func TestAllowsUpToLimit(t *testing.T) {
 }
 
 func TestBoundaryBurst(t *testing.T) {
-	fw := New(10, time.Minute)
+	fw := NewFixedWindow(10, time.Minute)
 	now := int64(1_000_000)
 	fw.now = func() int64 { return now }
 

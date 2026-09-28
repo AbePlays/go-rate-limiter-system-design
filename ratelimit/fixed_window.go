@@ -25,7 +25,7 @@ type FixedWindow struct {
 	now    func() int64
 }
 
-func New(limit int, window time.Duration) *FixedWindow {
+func NewFixedWindow(limit int, window time.Duration) *FixedWindow {
 	return &FixedWindow{
 		counts: make(map[string]*entry),
 		limit:  limit,
