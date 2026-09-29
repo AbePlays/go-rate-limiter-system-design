@@ -5,7 +5,7 @@ import "testing"
 func TestBurstThenDeny(t *testing.T) {
 	tb := NewTokenBucket(5, 1)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if d := tb.Allow("ip"); !d.Allowed {
 			t.Fatalf("request %d: expected allowed, got denied", i+1)
 		}
@@ -22,7 +22,7 @@ func TestIdleRefillsBucket(t *testing.T) {
 	now := int64(1_000_000)
 	tb.now = func() int64 { return now }
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		tb.Allow("ip")
 	}
 	if d := tb.Allow("ip"); d.Allowed {

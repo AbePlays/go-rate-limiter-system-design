@@ -34,6 +34,8 @@ func NewFixedWindow(limit int, window time.Duration) *FixedWindow {
 	}
 }
 
+func (fw *FixedWindow) Limit() int { return fw.limit }
+
 func (fw *FixedWindow) Allow(key string) Decision {
 	fw.mutex.Lock()
 	defer fw.mutex.Unlock()

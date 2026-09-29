@@ -28,6 +28,8 @@ func NewTokenBucket(capacity, refill float64) *TokenBucket {
 	}
 }
 
+func (tb *TokenBucket) Limit() int { return int(tb.capacity) }
+
 func (tb *TokenBucket) Allow(key string) Decision {
 	tb.mutex.Lock()
 	defer tb.mutex.Unlock()
