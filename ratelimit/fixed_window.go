@@ -18,21 +18,25 @@ type entry struct {
 }
 
 type FixedWindow struct {
-	counts map[string]*entry
-	limit  int
-	mutex  sync.Mutex
-	window time.Duration
-	now    func() int64
+	counts  map[string]*entry
+	limit   int
+	maxKeys int
+	mutex   sync.Mutex
+	window  time.Duration
+	now     func() int64
 }
 
 func NewFixedWindow(limit int, window time.Duration) *FixedWindow {
 	return &FixedWindow{
-		counts: make(map[string]*entry),
-		limit:  limit,
-		window: window,
-		now:    func() int64 { return time.Now().Unix() },
+		counts:  make(map[string]*entry),
+		limit:   limit,
+		maxKeys: defaultMaxKeys,
+		window:  window,
+		now:     func() int64 { return time.Now().Unix() },
 	}
 }
+
+func (fw *FixedWindow) SetMaxKeys(n int) { fw.maxKeys = n }
 
 func (fw *FixedWindow) Limit() int { return fw.limit }
 
@@ -44,6 +48,7 @@ func (fw *FixedWindow) Allow(key string) Decision {
 
 	val, ok := fw.counts[key]
 	if !ok {
+		evictIfFull(fw.counts, fw.maxKeys, func(e *entry) bool { return e.tick < currTick-1 })
 		fw.counts[key] = &entry{count: 0, tick: currTick}
 		val = fw.counts[key]
 	}

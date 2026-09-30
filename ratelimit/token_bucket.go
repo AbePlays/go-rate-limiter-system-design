@@ -14,6 +14,7 @@ type bucket struct {
 type TokenBucket struct {
 	buckets  map[string]*bucket
 	capacity float64
+	maxKeys  int
 	mutex    sync.Mutex
 	now      func() int64
 	refill   float64
@@ -23,12 +24,15 @@ func NewTokenBucket(capacity, refill float64) *TokenBucket {
 	return &TokenBucket{
 		buckets:  make(map[string]*bucket),
 		capacity: capacity,
+		maxKeys:  defaultMaxKeys,
 		now:      func() int64 { return time.Now().Unix() },
 		refill:   refill,
 	}
 }
 
 func (tb *TokenBucket) Limit() int { return int(tb.capacity) }
+
+func (tb *TokenBucket) SetMaxKeys(n int) { tb.maxKeys = n }
 
 func (tb *TokenBucket) Allow(key string) Decision {
 	tb.mutex.Lock()
@@ -37,6 +41,9 @@ func (tb *TokenBucket) Allow(key string) Decision {
 	now := tb.now()
 	val, ok := tb.buckets[key]
 	if !ok {
+		evictIfFull(tb.buckets, tb.maxKeys, func(b *bucket) bool {
+			return float64(now-b.last)*tb.refill >= 2*tb.capacity
+		})
 		tb.buckets[key] = &bucket{tokens: tb.capacity, last: now}
 		val = tb.buckets[key]
 	}

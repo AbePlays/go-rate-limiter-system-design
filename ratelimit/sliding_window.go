@@ -12,23 +12,27 @@ type windowCounts struct {
 }
 
 type SlidingWindow struct {
-	counts map[string]*windowCounts
-	limit  int
-	mutex  sync.Mutex
-	now    func() int64
-	window time.Duration
+	counts  map[string]*windowCounts
+	limit   int
+	maxKeys int
+	mutex   sync.Mutex
+	now     func() int64
+	window  time.Duration
 }
 
 func NewSlidingWindow(limit int, window time.Duration) *SlidingWindow {
 	return &SlidingWindow{
-		counts: make(map[string]*windowCounts),
-		limit:  limit,
-		window: window,
-		now:    func() int64 { return time.Now().Unix() },
+		counts:  make(map[string]*windowCounts),
+		limit:   limit,
+		maxKeys: defaultMaxKeys,
+		window:  window,
+		now:     func() int64 { return time.Now().Unix() },
 	}
 }
 
 func (sw *SlidingWindow) Limit() int { return sw.limit }
+
+func (sw *SlidingWindow) SetMaxKeys(n int) { sw.maxKeys = n }
 
 func (sw *SlidingWindow) Allow(key string) Decision {
 	sw.mutex.Lock()
@@ -40,6 +44,7 @@ func (sw *SlidingWindow) Allow(key string) Decision {
 
 	val, ok := sw.counts[key]
 	if !ok {
+		evictIfFull(sw.counts, sw.maxKeys, func(w *windowCounts) bool { return w.tick < currTick-1 })
 		val = &windowCounts{tick: currTick}
 		sw.counts[key] = val
 	} else if val.tick != currTick {

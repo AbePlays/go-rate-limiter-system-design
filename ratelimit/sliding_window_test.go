@@ -22,8 +22,6 @@ func TestSlidingAllowsUpToLimit(t *testing.T) {
 
 func TestSlidingBoundsBoundaryBurst(t *testing.T) {
 	sw := NewSlidingWindow(10, time.Minute)
-	// 59s into the tick: 10 requests land, then 1s later the window rolls
-	// and 10 more arrive — 20 requests within ~2 seconds.
 	now := int64(1_000_019)
 	sw.now = func() int64 { return now }
 

@@ -22,9 +22,6 @@ func TestAllowsUpToLimit(t *testing.T) {
 
 func TestBoundaryBurst(t *testing.T) {
 	fw := NewFixedWindow(10, time.Minute)
-	// 59s into the tick: 10 requests land, then 1s later the window rolls
-	// and 10 more arrive — 20 requests within ~2 seconds, all admitted.
-	// This is the boundary flaw stage 2 fixes; kept as documentation.
 	now := int64(1_000_019)
 	fw.now = func() int64 { return now }
 

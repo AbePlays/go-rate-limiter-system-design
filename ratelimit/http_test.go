@@ -47,6 +47,38 @@ func TestHeaders(t *testing.T) {
 	}
 }
 
+func TestPolicyMiddleware(t *testing.T) {
+	set := NewPolicySet(NewFixedWindow(1, time.Minute)) // floor: 1/min per IP
+	set.Add("login", NewFixedWindow(100, time.Minute))  // roomy key policy
+
+	reached := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true })
+	h := PolicyMiddleware(set, "login", inner)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusOK || !reached {
+		t.Fatalf("expected passthrough, got %d reached=%v", rec.Code, reached)
+	}
+
+	reached = false
+	for range 3 {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("api_key", "fake")
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+	}
+	if rec.Code != http.StatusTooManyRequests || reached {
+		t.Fatalf("expected floor 429 without passthrough, got %d reached=%v", rec.Code, reached)
+	}
+
+	rec = httptest.NewRecorder()
+	PolicyMiddleware(set, "nope", inner).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("unknown policy: expected 500, got %d", rec.Code)
+	}
+}
+
 func TestMiddleware(t *testing.T) {
 	reached := false
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true })
