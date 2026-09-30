@@ -52,7 +52,7 @@ func TestMiddleware(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true })
 	h := Middleware(NewFixedWindow(2, time.Minute), inner)
 
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 		if rec.Code != http.StatusOK || !reached {

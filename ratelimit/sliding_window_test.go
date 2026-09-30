@@ -8,7 +8,7 @@ import (
 func TestSlidingAllowsUpToLimit(t *testing.T) {
 	sw := NewSlidingWindow(3, time.Minute)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if d := sw.Allow("ip"); !d.Allowed {
 			t.Fatalf("request %d: expected allowed, got denied", i+1)
 		}
@@ -58,7 +58,7 @@ func TestSlidingForgetsIdleKeys(t *testing.T) {
 	}
 
 	now += 180 // idle past a whole window: previous must read as zero
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if d := sw.Allow("ip"); !d.Allowed {
 			t.Fatalf("after idle: request %d expected allowed, got denied", i+1)
 		}
