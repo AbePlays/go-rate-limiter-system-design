@@ -22,7 +22,10 @@ func TestAllowsUpToLimit(t *testing.T) {
 
 func TestBoundaryBurst(t *testing.T) {
 	fw := NewFixedWindow(10, time.Minute)
-	now := int64(1_000_000)
+	// 59s into the tick: 10 requests land, then 1s later the window rolls
+	// and 10 more arrive — 20 requests within ~2 seconds, all admitted.
+	// This is the boundary flaw stage 2 fixes; kept as documentation.
+	now := int64(1_000_019)
 	fw.now = func() int64 { return now }
 
 	admitted := 0
@@ -32,7 +35,7 @@ func TestBoundaryBurst(t *testing.T) {
 		}
 	}
 
-	now += 60 // cross into the next window without waiting
+	now += 1 // cross the tick: counter resets, second burst fully admitted
 	for range 10 {
 		if fw.Allow("ip").Allowed {
 			admitted++
