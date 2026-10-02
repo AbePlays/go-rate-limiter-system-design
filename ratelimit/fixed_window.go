@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -13,12 +14,12 @@ type Decision struct {
 }
 
 type entry struct {
-	count int
-	tick  int64
+	Count int   `json:"count"`
+	Tick  int64 `json:"tick"`
 }
 
 type FixedWindow struct {
-	counts  map[string]*entry
+	store   Store
 	limit   int
 	maxKeys int
 	mutex   sync.Mutex
@@ -28,7 +29,7 @@ type FixedWindow struct {
 
 func NewFixedWindow(limit int, window time.Duration) *FixedWindow {
 	return &FixedWindow{
-		counts:  make(map[string]*entry),
+		store:   NewMemStore(),
 		limit:   limit,
 		maxKeys: defaultMaxKeys,
 		window:  window,
@@ -40,31 +41,62 @@ func (fw *FixedWindow) SetMaxKeys(n int) { fw.maxKeys = n }
 
 func (fw *FixedWindow) Limit() int { return fw.limit }
 
+func (fw *FixedWindow) evict(currTick int64) {
+	if fw.store.Len() < fw.maxKeys {
+		return
+	}
+	for _, k := range fw.store.Keys() {
+		if raw, ok := fw.store.Get(k); ok {
+			var e entry
+			if json.Unmarshal(raw, &e) == nil && e.Tick < currTick-1 {
+				fw.store.Delete(k)
+			}
+		}
+	}
+	if fw.store.Len() < fw.maxKeys {
+		return
+	}
+	for _, k := range fw.store.Keys() {
+		fw.store.Delete(k)
+		break
+	}
+}
+
 func (fw *FixedWindow) Allow(key string) Decision {
 	fw.mutex.Lock()
 	defer fw.mutex.Unlock()
 
 	currTick := fw.now() / int64(fw.window.Seconds())
 
-	val, ok := fw.counts[key]
-	if !ok {
-		evictIfFull(fw.counts, fw.maxKeys, func(e *entry) bool { return e.tick < currTick-1 })
-		fw.counts[key] = &entry{count: 0, tick: currTick}
-		val = fw.counts[key]
+	val := &entry{Count: 0, Tick: currTick}
+	if raw, ok := fw.store.Get(key); ok {
+		if json.Unmarshal(raw, val) != nil {
+			val = &entry{Count: 0, Tick: currTick}
+		}
+	} else {
+		fw.evict(currTick)
 	}
 
-	if val.tick != currTick {
-		val.count = 0
-		val.tick = currTick
+	if val.Tick != currTick {
+		val.Count = 0
+		val.Tick = currTick
 	}
 
 	now := fw.now()
 	windowEnd := (currTick + 1) * int64(fw.window.Seconds())
 
-	if val.count < fw.limit {
-		val.count++
-		return Decision{Allowed: true, Remaining: fw.limit - val.count, ResetAt: windowEnd, RetryAfter: 0}
+	allowed := val.Count < fw.limit
+	remaining := 0
+	retryAfter := int(windowEnd - now)
+	if allowed {
+		val.Count++
+		remaining = fw.limit - val.Count
+		retryAfter = 0
 	}
 
-	return Decision{Allowed: false, Remaining: 0, ResetAt: windowEnd, RetryAfter: int(windowEnd - now)}
+	if raw, err := json.Marshal(val); err == nil {
+		fw.store.Set(key, raw)
+	}
+
+	return Decision{Allowed: allowed, Remaining: remaining, ResetAt: windowEnd, RetryAfter: retryAfter}
 }

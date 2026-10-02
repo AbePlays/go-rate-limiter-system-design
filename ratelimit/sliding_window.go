@@ -1,18 +1,19 @@
 package ratelimit
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
 
 type windowCounts struct {
-	curr int
-	prev int
-	tick int64
+	Curr int   `json:"curr"`
+	Prev int   `json:"prev"`
+	Tick int64 `json:"tick"`
 }
 
 type SlidingWindow struct {
-	counts  map[string]*windowCounts
+	store   Store
 	limit   int
 	maxKeys int
 	mutex   sync.Mutex
@@ -22,7 +23,7 @@ type SlidingWindow struct {
 
 func NewSlidingWindow(limit int, window time.Duration) *SlidingWindow {
 	return &SlidingWindow{
-		counts:  make(map[string]*windowCounts),
+		store:   NewMemStore(),
 		limit:   limit,
 		maxKeys: defaultMaxKeys,
 		window:  window,
@@ -34,6 +35,27 @@ func (sw *SlidingWindow) Limit() int { return sw.limit }
 
 func (sw *SlidingWindow) SetMaxKeys(n int) { sw.maxKeys = n }
 
+func (sw *SlidingWindow) evict(currTick int64) {
+	if sw.store.Len() < sw.maxKeys {
+		return
+	}
+	for _, k := range sw.store.Keys() {
+		if raw, ok := sw.store.Get(k); ok {
+			var w windowCounts
+			if json.Unmarshal(raw, &w) == nil && w.Tick < currTick-1 {
+				sw.store.Delete(k)
+			}
+		}
+	}
+	if sw.store.Len() < sw.maxKeys {
+		return
+	}
+	for _, k := range sw.store.Keys() {
+		sw.store.Delete(k)
+		break
+	}
+}
+
 func (sw *SlidingWindow) Allow(key string) Decision {
 	sw.mutex.Lock()
 	defer sw.mutex.Unlock()
@@ -42,29 +64,41 @@ func (sw *SlidingWindow) Allow(key string) Decision {
 	windowSec := int64(sw.window.Seconds())
 	currTick := now / windowSec
 
-	val, ok := sw.counts[key]
-	if !ok {
-		evictIfFull(sw.counts, sw.maxKeys, func(w *windowCounts) bool { return w.tick < currTick-1 })
-		val = &windowCounts{tick: currTick}
-		sw.counts[key] = val
-	} else if val.tick != currTick {
-		if val.tick == currTick-1 {
-			val.prev = val.curr
-		} else {
-			val.prev = 0
+	val := &windowCounts{Tick: currTick}
+	if raw, ok := sw.store.Get(key); ok {
+		if json.Unmarshal(raw, val) != nil {
+			val = &windowCounts{Tick: currTick}
 		}
-		val.curr = 0
-		val.tick = currTick
+	} else {
+		sw.evict(currTick)
+	}
+
+	if val.Tick != currTick {
+		if val.Tick == currTick-1 {
+			val.Prev = val.Curr
+		} else {
+			val.Prev = 0
+		}
+		val.Curr = 0
+		val.Tick = currTick
 	}
 
 	overlap := 1 - float64(now-currTick*windowSec)/float64(windowSec)
-	estimate := float64(val.curr) + float64(val.prev)*overlap
+	estimate := float64(val.Curr) + float64(val.Prev)*overlap
 
 	windowEnd := (currTick + 1) * windowSec
-	if estimate < float64(sw.limit) {
-		val.curr++
-		return Decision{Allowed: true, Remaining: sw.limit - val.curr, ResetAt: windowEnd, RetryAfter: 0}
+	allowed := estimate < float64(sw.limit)
+	remaining := 0
+	retryAfter := int(windowEnd - now)
+	if allowed {
+		val.Curr++
+		remaining = sw.limit - val.Curr
+		retryAfter = 0
 	}
 
-	return Decision{Allowed: false, Remaining: 0, ResetAt: windowEnd, RetryAfter: int(windowEnd - now)}
+	if raw, err := json.Marshal(val); err == nil {
+		sw.store.Set(key, raw)
+	}
+
+	return Decision{Allowed: allowed, Remaining: remaining, ResetAt: windowEnd, RetryAfter: retryAfter}
 }

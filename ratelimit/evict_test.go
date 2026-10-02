@@ -15,7 +15,7 @@ func TestFixedWindowCapsKeys(t *testing.T) {
 		fw.Allow(string(rune('a' + i)))
 		now += 1
 	}
-	if n := len(fw.counts); n > 10 {
+	if n := fw.store.Len(); n > 10 {
 		t.Fatalf("expected at most 10 keys, got %d", n)
 	}
 }
@@ -32,10 +32,10 @@ func TestEvictionPrefersStale(t *testing.T) {
 	fw.Allow("new1")
 	fw.Allow("new2")
 
-	if _, ok := fw.counts["old1"]; ok {
+	if _, ok := fw.store.Get("old1"); ok {
 		t.Fatal("expected stale old1 evicted")
 	}
-	if _, ok := fw.counts["old2"]; ok {
+	if _, ok := fw.store.Get("old2"); ok {
 		t.Fatal("expected stale old2 evicted")
 	}
 }
