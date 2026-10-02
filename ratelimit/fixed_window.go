@@ -27,14 +27,24 @@ type FixedWindow struct {
 	now     func() int64
 }
 
-func NewFixedWindow(limit int, window time.Duration) *FixedWindow {
-	return &FixedWindow{
+func NewFixedWindow(limit int, window time.Duration, opts ...FixedOption) *FixedWindow {
+	fw := &FixedWindow{
 		store:   NewMemStore(),
 		limit:   limit,
 		maxKeys: defaultMaxKeys,
 		window:  window,
 		now:     func() int64 { return time.Now().Unix() },
 	}
+	for _, opt := range opts {
+		opt(fw)
+	}
+	return fw
+}
+
+type FixedOption func(*FixedWindow)
+
+func WithFixedStore(s Store) FixedOption {
+	return func(fw *FixedWindow) { fw.store = s }
 }
 
 func (fw *FixedWindow) SetMaxKeys(n int) { fw.maxKeys = n }
@@ -95,7 +105,7 @@ func (fw *FixedWindow) Allow(key string) Decision {
 	}
 
 	if raw, err := json.Marshal(val); err == nil {
-		fw.store.Set(key, raw)
+		fw.store.Set(key, raw, 2*fw.window)
 	}
 
 	return Decision{Allowed: allowed, Remaining: remaining, ResetAt: windowEnd, RetryAfter: retryAfter}

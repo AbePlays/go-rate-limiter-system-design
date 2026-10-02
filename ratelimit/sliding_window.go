@@ -21,14 +21,24 @@ type SlidingWindow struct {
 	window  time.Duration
 }
 
-func NewSlidingWindow(limit int, window time.Duration) *SlidingWindow {
-	return &SlidingWindow{
+func NewSlidingWindow(limit int, window time.Duration, opts ...SlidingOption) *SlidingWindow {
+	sw := &SlidingWindow{
 		store:   NewMemStore(),
 		limit:   limit,
 		maxKeys: defaultMaxKeys,
 		window:  window,
 		now:     func() int64 { return time.Now().Unix() },
 	}
+	for _, opt := range opts {
+		opt(sw)
+	}
+	return sw
+}
+
+type SlidingOption func(*SlidingWindow)
+
+func WithSlidingStore(s Store) SlidingOption {
+	return func(sw *SlidingWindow) { sw.store = s }
 }
 
 func (sw *SlidingWindow) Limit() int { return sw.limit }
@@ -97,7 +107,7 @@ func (sw *SlidingWindow) Allow(key string) Decision {
 	}
 
 	if raw, err := json.Marshal(val); err == nil {
-		sw.store.Set(key, raw)
+		sw.store.Set(key, raw, 2*sw.window)
 	}
 
 	return Decision{Allowed: allowed, Remaining: remaining, ResetAt: windowEnd, RetryAfter: retryAfter}

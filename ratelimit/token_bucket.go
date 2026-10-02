@@ -21,14 +21,24 @@ type TokenBucket struct {
 	refill   float64
 }
 
-func NewTokenBucket(capacity, refill float64) *TokenBucket {
-	return &TokenBucket{
+func NewTokenBucket(capacity, refill float64, opts ...BucketOption) *TokenBucket {
+	tb := &TokenBucket{
 		store:    NewMemStore(),
 		capacity: capacity,
 		maxKeys:  defaultMaxKeys,
 		now:      func() int64 { return time.Now().Unix() },
 		refill:   refill,
 	}
+	for _, opt := range opts {
+		opt(tb)
+	}
+	return tb
+}
+
+type BucketOption func(*TokenBucket)
+
+func WithBucketStore(s Store) BucketOption {
+	return func(tb *TokenBucket) { tb.store = s }
 }
 
 func (tb *TokenBucket) Limit() int { return int(tb.capacity) }
@@ -83,7 +93,7 @@ func (tb *TokenBucket) Allow(key string) Decision {
 	}
 
 	if raw, err := json.Marshal(val); err == nil {
-		tb.store.Set(key, raw)
+		tb.store.Set(key, raw, 2*time.Duration(tb.capacity/tb.refill)*time.Second)
 	}
 
 	resetAt := now + int64((tb.capacity-val.Tokens)/tb.refill)
