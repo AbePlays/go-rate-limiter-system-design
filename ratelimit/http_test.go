@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,15 +13,25 @@ func TestClientIP(t *testing.T) {
 		name       string
 		remoteAddr string
 		forwarded  string
+		hops       int
 		want       string
 	}{
-		{"forwarded single", "10.0.0.1:1234", "1.2.3.4", "1.2.3.4"},
-		{"forwarded chain takes leftmost", "10.0.0.1:1234", "1.2.3.4, 5.6.7.8", "1.2.3.4"},
-		{"no header strips port", "1.2.3.4:56789", "", "1.2.3.4"},
-		{"malformed remote addr passes through", "not-an-addr", "", "not-an-addr"},
+		{"untrusted ignores forwarded header", "9.9.9.9:1234", "1.2.3.4", 0, "9.9.9.9"},
+		{"one hop reads rightmost", "10.0.0.1:1234", "1.2.3.4", 1, "1.2.3.4"},
+		{"one hop ignores client-forged prefix", "10.0.0.1:1234", "6.6.6.6, 1.2.3.4", 1, "1.2.3.4"},
+		{"two hops skips the inner proxy", "10.0.0.1:1234", "1.2.3.4, 10.0.0.2", 2, "1.2.3.4"},
+		{"chain shorter than hops falls back to peer", "10.0.0.1:1234", "1.2.3.4", 2, "10.0.0.1"},
+		{"garbage entry falls back to peer", "10.0.0.1:1234", "not-an-ip", 1, "10.0.0.1"},
+		{"ipv6 is normalized", "10.0.0.1:1234", "2001:DB8:0:0:0:0:0:1", 1, "2001:db8::1"},
+		{"no header strips port", "1.2.3.4:56789", "", 0, "1.2.3.4"},
+		{"trusted but no header uses peer", "1.2.3.4:56789", "", 1, "1.2.3.4"},
+		{"malformed remote addr passes through", "not-an-addr", "", 0, "not-an-addr"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			SetTrustedProxyHops(tt.hops)
+			t.Cleanup(func() { SetTrustedProxyHops(0) })
+
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
 			r.RemoteAddr = tt.remoteAddr
 			if tt.forwarded != "" {
@@ -30,6 +41,36 @@ func TestClientIP(t *testing.T) {
 				t.Fatalf("ClientIP() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestClientIPJoinsRepeatedForwardedHeaders(t *testing.T) {
+	SetTrustedProxyHops(1)
+	t.Cleanup(func() { SetTrustedProxyHops(0) })
+
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "10.0.0.1:1234"
+	r.Header.Add("X-Forwarded-For", "6.6.6.6")
+	r.Header.Add("X-Forwarded-For", "1.2.3.4")
+	if got := ClientIP(r); got != "1.2.3.4" {
+		t.Fatalf("ClientIP() = %q, want 1.2.3.4", got)
+	}
+}
+
+func TestForgedForwardedForCannotEvadeLimit(t *testing.T) {
+	SetTrustedProxyHops(0)
+	h := Middleware(NewFixedWindow(1, time.Minute), http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+
+	var last int
+	for i := range 3 {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("X-Forwarded-For", fmt.Sprintf("1.1.1.%d", i))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		last = rec.Code
+	}
+	if last != http.StatusTooManyRequests {
+		t.Fatalf("rotating X-Forwarded-For evaded the limit: last status %d", last)
 	}
 }
 

@@ -303,6 +303,12 @@ make compose-up
 
 The app is available at `http://localhost:8080`.
 
+### Configuration
+
+| Variable             | Default | Meaning |
+| -------------------- | ------- | ------- |
+| `TRUSTED_PROXY_HOPS` | `0`     | Number of trusted reverse proxies in front of the app. `0` ignores `X-Forwarded-For` entirely and keys every request by its TCP peer. Set `1` behind a single proxy (e.g. Render's router) so the client IP is read from the right-hand end of the header. Never set it higher than the number of proxies you control: entries further left are client-forged. |
+
 See the `Makefile` for the full set of available commands (tests, formatting, linting, Docker).
 
 ## License
