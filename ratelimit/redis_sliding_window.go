@@ -8,6 +8,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// The script returns the previous window's count alongside the current one so
+// the caller can compute Remaining from the same weighted estimate that made
+// the allow/deny decision.
 var slidingWindowScript = redis.NewScript(`
 local curr = tonumber(redis.call('GET', KEYS[1]) or '0')
 local prev = tonumber(redis.call('GET', KEYS[2]) or '0')
@@ -16,9 +19,9 @@ if estimate < tonumber(ARGV[2]) then
 	curr = redis.call('INCR', KEYS[1])
 	redis.call('EXPIRE', KEYS[1], ARGV[3])
 	redis.call('EXPIRE', KEYS[2], ARGV[3])
-	return {1, curr}
+	return {1, curr, prev}
 end
-return {0, curr}
+return {0, curr, prev}
 `)
 
 type RedisSlidingWindow struct {
@@ -66,14 +69,16 @@ func (r *RedisSlidingWindow) Allow(key string) Decision {
 		},
 		overlap, r.limit, 2*windowSec,
 	).Slice()
-	if err != nil {
+	if err != nil || len(res) != 3 {
 		return r.fallback(windowEnd, now)
 	}
 
-	allowed := res[0].(int64) == 1
-	curr := res[1].(int64)
-	if allowed {
-		return Decision{Allowed: true, Remaining: r.limit - int(curr), ResetAt: windowEnd, RetryAfter: 0}
+	allowedFlag, _ := res[0].(int64)
+	curr, _ := res[1].(int64)
+	prev, _ := res[2].(int64)
+	if allowedFlag == 1 {
+		remaining := slidingRemaining(r.limit, int(curr), int(prev), overlap)
+		return Decision{Allowed: true, Remaining: remaining, ResetAt: windowEnd, RetryAfter: 0}
 	}
 	return Decision{Allowed: false, Remaining: 0, ResetAt: windowEnd, RetryAfter: int(windowEnd - now)}
 }

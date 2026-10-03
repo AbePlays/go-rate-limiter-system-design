@@ -62,3 +62,27 @@ func TestSlidingForgetsIdleKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestSlidingRemainingCountsPreviousWindow(t *testing.T) {
+	sw := NewSlidingWindow(10, time.Minute)
+	now := int64(1_000_079) // last second of a window
+	sw.now = func() int64 { return now }
+
+	for range 10 {
+		sw.Allow("ip")
+	}
+
+	now = 1_000_110 // halfway through the next window: previous counts 50%
+	d := sw.Allow("ip")
+	if !d.Allowed || d.Remaining != 4 {
+		t.Fatalf("expected allow with remaining 4, got %+v", d)
+	}
+	for i := range d.Remaining {
+		if !sw.Allow("ip").Allowed {
+			t.Fatalf("request %d of the advertised remaining was denied", i+1)
+		}
+	}
+	if sw.Allow("ip").Allowed {
+		t.Fatal("allowed past the advertised remaining")
+	}
+}

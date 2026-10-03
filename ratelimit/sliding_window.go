@@ -2,6 +2,7 @@ package ratelimit
 
 import (
 	"encoding/json"
+	"math"
 	"sync"
 	"time"
 )
@@ -44,6 +45,15 @@ func WithSlidingStore(s Store) SlidingOption {
 func (sw *SlidingWindow) Limit() int { return sw.limit }
 
 func (sw *SlidingWindow) SetMaxKeys(n int) { sw.maxKeys = n }
+
+// slidingRemaining is how many more requests the weighted estimate would admit
+// right now: the same "estimate < limit" rule Allow applies, run forward. The
+// epsilon stops float error from shifting the answer when the estimate lands
+// exactly on a whole number.
+func slidingRemaining(limit, curr, prev int, overlap float64) int {
+	estimate := float64(curr) + float64(prev)*overlap
+	return max(0, int(math.Ceil(float64(limit)-estimate-1e-9)))
+}
 
 func (sw *SlidingWindow) evict(currTick int64) {
 	if sw.store.Len() < sw.maxKeys {
@@ -102,7 +112,7 @@ func (sw *SlidingWindow) Allow(key string) Decision {
 	retryAfter := int(windowEnd - now)
 	if allowed {
 		val.Curr++
-		remaining = sw.limit - val.Curr
+		remaining = slidingRemaining(sw.limit, val.Curr, val.Prev, overlap)
 		retryAfter = 0
 	}
 

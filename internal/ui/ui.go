@@ -89,12 +89,14 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 
 	outs := make([]outcome, 0, n)
 	nowUnix := time.Now().Unix()
+	var limit int
 	for range n {
-		d, _, ok := h.set.Allow(policy, effective, ratelimit.ClientIP(r))
+		d, lim, ok := h.set.Allow(policy, effective, ratelimit.ClientIP(r))
 		if !ok {
 			http.Error(w, "unknown policy", http.StatusBadRequest)
 			return
 		}
+		limit = lim
 		resetIn := d.ResetAt - nowUnix
 		if resetIn < 0 {
 			resetIn = 0
@@ -122,7 +124,6 @@ func (h *Handler) Request(w http.ResponseWriter, r *http.Request) {
 		"SimNote":     n > 1,
 	}
 	if n == 1 {
-		limit, _ := h.set.Limit(policy)
 		data["Single"] = outs[0]
 		data["Limit"] = limit
 	}
