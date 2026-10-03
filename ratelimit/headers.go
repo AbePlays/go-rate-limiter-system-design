@@ -13,5 +13,8 @@ func Headers(limit int, d Decision) http.Header {
 	if !d.Allowed {
 		h.Set("Retry-After", strconv.Itoa(d.RetryAfter))
 	}
+	if d.Fallback {
+		h.Set("X-RateLimit-Fallback", "true")
+	}
 	return h
 }

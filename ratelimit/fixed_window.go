@@ -11,6 +11,7 @@ type Decision struct {
 	Remaining  int
 	ResetAt    int64
 	RetryAfter int
+	Fallback   bool
 }
 
 type entry struct {
