@@ -1,0 +1,36 @@
+{{define "content"}}
+<div class="about">
+  <span class="emoji">🚦</span>
+  <h1>About this little project</h1>
+  <p>A rate limiter built in Go — admission control with understood trade-offs, not magic middleware.</p>
+
+  <h2>What's under the hood</h2>
+  <ul>
+    <li>Three algorithms: fixed window, sliding window counter, token bucket</li>
+    <li>Per-key rooms with a per-IP floor underneath — deny wins</li>
+    <li>Redis shared state via atomic Lua scripts, TTL-bounded keys</li>
+    <li>Fail-open by default, fail-closed where over-admit is unacceptable</li>
+    <li>Standard headers on every response, 429 + Retry-After on deny</li>
+  </ul>
+
+  <h2>Planned</h2>
+  <ul>
+    <li>Shortener redirect route limited live</li>
+    <li>Per-route env-driven policies</li>
+  </ul>
+
+  <h2>Tech stack</h2>
+  <ul>
+    <li>Go</li>
+    <li>Redis</li>
+    <li>Docker Compose</li>
+    <li>Plain HTML &amp; CSS (no JavaScript)</li>
+  </ul>
+
+  <h2>Source</h2>
+  <p>This project is open source. <a href="https://github.com/AbePlays/go-rate-limiter-system-design" rel="noopener">View it on GitHub</a>.</p>
+
+  <hr>
+  <p class="footer">Made for learning system design the hands-on way.</p>
+</div>
+{{end}}

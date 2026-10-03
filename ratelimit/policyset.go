@@ -20,6 +20,16 @@ func (p *PolicySet) Add(name string, l Limiter) {
 	p.byName[name] = l
 }
 
+func (p *PolicySet) Limit(name string) (int, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	l, ok := p.byName[name]
+	if !ok {
+		return 0, false
+	}
+	return l.Limit(), true
+}
+
 func (p *PolicySet) Allow(name, key, ip string) (Decision, int, bool) {
 	p.mu.RLock()
 	l, ok := p.byName[name]

@@ -1,0 +1,58 @@
+{{define "content"}}
+<h1>Rate limiter</h1>
+<p class="subtitle">One policy per route. Pick a rule, fire requests, watch the allowance drain.</p>
+
+<div class="cards">
+  {{range .PolicyInfos}}
+  <div class="card">
+    <div class="label">{{.Name}}</div>
+    <div class="value">{{.Limit}}</div>
+    <div class="sub">{{.Algo}}</div>
+  </div>
+  {{end}}
+</div>
+
+<div class="form-card">
+  <form method="POST" action="/">
+    <input type="radio" id="p-redirects" name="policy" value="redirects" {{if eq .Policy "redirects"}}checked{{end}}{{if not .Policy}}checked{{end}}>
+    <input type="radio" id="p-login" name="policy" value="login" {{if eq .Policy "login"}}checked{{end}}>
+    <input type="radio" id="p-api" name="policy" value="api" {{if eq .Policy "api"}}checked{{end}}>
+    <div class="type-cards">
+      <label for="p-redirects"><span class="icon">🌊</span><span class="name">Redirects</span><span class="desc">Token bucket · bursty</span></label>
+      <label for="p-login"><span class="icon">🔒</span><span class="name">Login</span><span class="desc">Sliding window · strict</span></label>
+      <label for="p-api"><span class="icon">🔧</span><span class="name">API</span><span class="desc">Sliding window · medium</span></label>
+    </div>
+    <label class="field" for="key">Key (blank = your IP)</label>
+    <input type="text" id="key" name="key" placeholder="e.g. 1.2.3.4" value="{{.Key}}">
+    <label class="field" for="api_key">API key (optional identity)</label>
+    <input type="text" id="api_key" name="api_key" placeholder="e.g. cust-1" value="{{.ApiKey}}">
+    <div class="row">
+      <button type="submit" name="action" value="single">Send request</button>
+      <button type="submit" name="action" value="burst" class="burst">Burst ×20</button>
+    </div>
+  </form>
+</div>
+
+{{if .Single}}
+<div class="block">
+  <h2>Last decision · {{.Policy}}</h2>
+  <table>
+    <tr><th>Verdict</th><td><span class="pill {{if .Single.Allowed}}allow{{else}}deny{{end}}">{{if .Single.Allowed}}allow{{else}}deny{{end}}</span></td></tr>
+    <tr><th>Limit</th><td>{{.Limit}}</td></tr>
+    <tr><th>Remaining</th><td>{{.Single.Remaining}}</td></tr>
+    <tr><th>Reset</th><td>in {{.Single.ResetIn}}s</td></tr>
+    {{if not .Single.Allowed}}<tr><th>Retry after (s)</th><td>{{.Single.Wait}}</td></tr>{{end}}
+  </table>
+</div>
+{{end}}
+
+{{if .Outcomes}}
+<div class="block">
+  <h2>{{.Admitted}} / {{.Total}} admitted · {{.Policy}}</h2>
+  <div class="chips">
+    {{range .Outcomes}}<span class="chip {{if .Allowed}}allow{{else}}deny{{end}}"></span>{{end}}
+  </div>
+  {{if .SimNote}}<p class="note">Simulated burst: one POST, 20 internal decisions — proves the algorithm, not the wire. Use “Send request” for real HTTP round-trips.</p>{{end}}
+</div>
+{{end}}
+{{end}}

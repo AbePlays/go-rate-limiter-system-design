@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} · Limits</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚦</text></svg>">
+  <style>
+    :root {
+      --bg: #faf5ec; --surface: #fffdf7; --text: #4a2c14; --muted: #a0805a;
+      --border: #f0dcbd; --accent: #c2410c; --accent-soft: #ffedd5; --lavender: #b45309;
+      --allow: #059669; --deny: #e11d48;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at 10% 0%, #ffedd5 0%, transparent 50%),
+        radial-gradient(ellipse at 90% 100%, #fef3c7 0%, transparent 45%);
+      color: var(--text); line-height: 1.5; min-height: 100vh;
+    }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.75rem; background: rgba(255,255,255,0.8);
+      backdrop-filter: blur(10px); border-bottom: 1px solid var(--border);
+    }
+    header a.logo { font-weight: 800; font-size: 1.1rem; color: var(--accent); text-decoration: none; }
+    header a.logo span { color: var(--lavender); font-weight: 600; }
+    header nav a { color: var(--muted); text-decoration: none; font-size: 0.875rem; font-weight: 600; }
+    main { max-width: 920px; margin: 2rem auto; padding: 0 1.25rem; }
+    h1 { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 1rem; }
+    .subtitle { color: var(--muted); margin-bottom: 1.5rem; margin-top: -0.5rem; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.85rem; margin-bottom: 1.35rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+      padding: 1.15rem 1.1rem; box-shadow: 0 4px 14px rgba(194,65,12,0.06);
+    }
+    .card .label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; }
+    .card .value { font-size: 1.8rem; font-weight: 800; margin-top: 0.2rem; }
+    .card .sub { font-size: 0.75rem; color: var(--muted); font-weight: 600; }
+    table {
+      width: 100%; border-collapse: collapse; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 18px; overflow: hidden; font-size: 0.9rem;
+      box-shadow: 0 4px 14px rgba(194,65,12,0.06); margin-top: 1rem;
+    }
+    th {
+      text-align: left; padding: 0.7rem 0.9rem; font-size: 0.68rem; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--border);
+      background: #faf5ec; font-weight: 700;
+    }
+    td { padding: 0.75rem 0.9rem; border-bottom: 1px solid #f7ead3; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    .pill {
+      display: inline-block; padding: 0.2rem 0.65rem; border-radius: 999px;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .pill.allow { background: #e9f2d8; color: #3f6212; }
+    .pill.deny { background: #ffe4e6; color: #9f1239; }
+    .empty { text-align: center; color: var(--muted); padding: 2.5rem 1rem; }
+    label.field {
+      display: block; font-size: 0.75rem; font-weight: 700; color: var(--muted);
+      margin-bottom: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    input[type="text"], select {
+      width: 100%; padding: 0.7rem 0.85rem; border: 1.5px solid var(--border);
+      border-radius: 12px; font-size: 0.95rem; font-family: inherit; background: #faf5ec;
+      margin-bottom: 1rem;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .form-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 1.75rem; box-shadow: 0 4px 14px rgba(194,65,12,0.06); margin-bottom: 1.35rem;
+    }
+    .type-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1.5rem; }
+    form > input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+    .type-cards label {
+      display: block; text-align: center; padding: 1.15rem 0.7rem;
+      border: 1.5px solid var(--border); border-radius: 16px; background: #faf5ec;
+      cursor: pointer; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+      margin: 0; text-transform: none; letter-spacing: 0;
+    }
+    .type-cards label .icon { font-size: 1.6rem; display: block; margin-bottom: 0.4rem; line-height: 1; }
+    .type-cards label .name { font-weight: 700; font-size: 0.9rem; color: var(--text); display: block; }
+    .type-cards label .desc { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; font-weight: 500; display: block; }
+    #p-redirects:checked ~ .type-cards label[for="p-redirects"],
+    #p-login:checked ~ .type-cards label[for="p-login"],
+    #p-api:checked ~ .type-cards label[for="p-api"] {
+      border-color: var(--accent); background: var(--accent-soft);
+      box-shadow: 0 0 0 3px rgba(194,65,12,0.15);
+    }
+    .row { display: flex; gap: 0.75rem; }
+    .row button[type=submit] { flex: 1; }
+    button[type=submit] {
+      background: var(--accent); color: #fff; border: none; padding: 0.75rem 1.2rem;
+      border-radius: 999px; font-size: 0.95rem; font-weight: 700; cursor: pointer; width: 100%;
+    }
+    button[type=submit]:hover { background: #9a3412; }
+    button[type=submit].burst { background: #3f1d0d; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 1rem; }
+    .chip { width: 22px; height: 22px; border-radius: 50%; }
+    .chip.allow { background: #65a30d; }
+    .chip.deny { background: #ef4444; }
+    .note { font-size: 0.85rem; color: var(--muted); margin-top: 1rem; }
+    .block {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+      padding: 1.25rem 1.35rem; margin-bottom: 1rem; box-shadow: 0 4px 14px rgba(194,65,12,0.06);
+    }
+    .block h2 {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-bottom: 0.6rem; font-weight: 700;
+    }
+    .about { background: #fffdf7; border: 1px solid #f5e0c8; border-radius: 20px; padding: 2.5rem 2.5rem; color: #6b3f22; box-shadow: 0 4px 14px rgba(194,65,12,0.06); line-height: 1.65; }
+    .about .emoji { font-size: 2.5rem; line-height: 1; display: block; margin-bottom: 1rem; }
+    .about h1 { color: #3f1d0d; font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.75rem; }
+    .about h2 { color: var(--accent); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; margin: 2rem 0 0.75rem; padding-bottom: 0.4rem; border-bottom: 2px solid var(--line, #f5e0c8); }
+    .about ul { padding-left: 1.25rem; margin: 0; }
+    .about li { margin-bottom: 0.5rem; }
+    .about li::marker { color: var(--accent); }
+    .about p { margin-bottom: 0.75rem; }
+    .about a { color: var(--accent); font-weight: 600; }
+    .about hr { border: none; border-top: 2px dashed #f5e0c8; margin: 2rem 0 1.25rem; }
+    .about .footer { color: var(--muted, #a0805a); font-size: 0.9rem; }
+    @media (max-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 480px) { .type-cards { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" class="logo">limits<span>.lab</span></a>
+    <nav><a href="/about">About</a></nav>
+  </header>
+  <main>
+    {{template "content" .}}
+  </main>
+</body>
+</html>
