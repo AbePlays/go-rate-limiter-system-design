@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/AbePlays/go-rate-limiter-system-design/internal/ui"
 	"github.com/AbePlays/go-rate-limiter-system-design/ratelimit"
 )
@@ -39,6 +41,25 @@ func main() {
 	set.Add("redirects", ratelimit.NewTokenBucket(20, 5))
 	set.Add("login", ratelimit.NewSlidingWindow(5, time.Minute))
 	set.Add("api", ratelimit.NewSlidingWindow(100, time.Minute))
+	backend := "in-memory"
+	if url := os.Getenv("REDIS_URL"); url != "" {
+		opt, err := redis.ParseURL(url)
+		if err != nil {
+			slog.Error("bad REDIS_URL", "err", err)
+			os.Exit(1)
+		}
+		client := redis.NewClient(opt)
+		if err := client.Ping(context.Background()).Err(); err != nil {
+			slog.Error("redis unreachable", "err", err)
+			os.Exit(1)
+		}
+		set = ratelimit.NewPolicySet(ratelimit.NewRedisFixedWindow(client, ipFloorPerMinute, time.Minute))
+		set.Add("redirects", ratelimit.NewRedisTokenBucket(client, 20, 5))
+		set.Add("login", ratelimit.NewRedisSlidingWindow(client, 5, time.Minute))
+		set.Add("api", ratelimit.NewRedisSlidingWindow(client, 100, time.Minute))
+		backend = "redis"
+	}
+	slog.Info("policy backend", "backend", backend)
 
 	h := ui.New(set, []string{"redirects", "login", "api"})
 
