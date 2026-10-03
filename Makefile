@@ -1,4 +1,4 @@
-.PHONY: compose-up compose-down fmt vet test build
+.PHONY: compose-up compose-down fmt vet vuln test build
 
 compose-up:
 	docker compose up -d
@@ -11,6 +11,9 @@ fmt:
 
 vet:
 	go vet ./...
+
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 test:
 	go test -p 1 ./... -race -count=1

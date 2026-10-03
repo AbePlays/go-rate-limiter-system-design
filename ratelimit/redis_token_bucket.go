@@ -103,7 +103,10 @@ func (r *RedisTokenBucket) Allow(key string) Decision {
 		return r.fallback()
 	}
 
-	allowedFlag, _ := res[0].(int64)
+	allowedFlag, ok := res[0].(int64)
+	if !ok {
+		return r.fallback()
+	}
 	tokens := redisNumber(res[1])
 	now := redisNumber(res[2])
 

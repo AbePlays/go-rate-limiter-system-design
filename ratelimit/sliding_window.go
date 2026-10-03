@@ -14,22 +14,20 @@ type windowCounts struct {
 }
 
 type SlidingWindow struct {
-	store   Store
-	limit   int
-	maxKeys int
-	mutex   sync.Mutex
-	now     func() int64
-	window  time.Duration
+	store  *MemStore
+	limit  int
+	mutex  sync.Mutex
+	now    func() int64
+	window time.Duration
 }
 
 func NewSlidingWindow(limit int, window time.Duration, opts ...SlidingOption) *SlidingWindow {
 	sw := &SlidingWindow{
-		store:   NewMemStore(),
-		limit:   limit,
-		maxKeys: defaultMaxKeys,
-		window:  window,
-		now:     func() int64 { return time.Now().Unix() },
+		limit:  limit,
+		window: window,
+		now:    func() int64 { return time.Now().Unix() },
 	}
+	sw.store = NewMemStore(0, sw.now)
 	for _, opt := range opts {
 		opt(sw)
 	}
@@ -38,42 +36,15 @@ func NewSlidingWindow(limit int, window time.Duration, opts ...SlidingOption) *S
 
 type SlidingOption func(*SlidingWindow)
 
-func WithSlidingStore(s Store) SlidingOption {
+func WithSlidingStore(s *MemStore) SlidingOption {
 	return func(sw *SlidingWindow) { sw.store = s }
 }
 
 func (sw *SlidingWindow) Limit() int { return sw.limit }
 
-func (sw *SlidingWindow) SetMaxKeys(n int) { sw.maxKeys = n }
-
-// slidingRemaining is how many more requests the weighted estimate would admit
-// right now: the same "estimate < limit" rule Allow applies, run forward. The
-// epsilon stops float error from shifting the answer when the estimate lands
-// exactly on a whole number.
 func slidingRemaining(limit, curr, prev int, overlap float64) int {
 	estimate := float64(curr) + float64(prev)*overlap
 	return max(0, int(math.Ceil(float64(limit)-estimate-1e-9)))
-}
-
-func (sw *SlidingWindow) evict(currTick int64) {
-	if sw.store.Len() < sw.maxKeys {
-		return
-	}
-	for _, k := range sw.store.Keys() {
-		if raw, ok := sw.store.Get(k); ok {
-			var w windowCounts
-			if json.Unmarshal(raw, &w) == nil && w.Tick < currTick-1 {
-				sw.store.Delete(k)
-			}
-		}
-	}
-	if sw.store.Len() < sw.maxKeys {
-		return
-	}
-	for _, k := range sw.store.Keys() {
-		sw.store.Delete(k)
-		break
-	}
 }
 
 func (sw *SlidingWindow) Allow(key string) Decision {
@@ -89,8 +60,6 @@ func (sw *SlidingWindow) Allow(key string) Decision {
 		if json.Unmarshal(raw, val) != nil {
 			val = &windowCounts{Tick: currTick}
 		}
-	} else {
-		sw.evict(currTick)
 	}
 
 	if val.Tick != currTick {

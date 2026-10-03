@@ -8,20 +8,34 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// The script returns the previous window's count alongside the current one so
-// the caller can compute Remaining from the same weighted estimate that made
-// the allow/deny decision.
+// Tick, overlap, and remaining are all computed from Redis TIME so every
+// instance agrees on window boundaries. nowOverride is a test seam:
+// production passes "" and the server clock is used.
 var slidingWindowScript = redis.NewScript(`
-local curr = tonumber(redis.call('GET', KEYS[1]) or '0')
-local prev = tonumber(redis.call('GET', KEYS[2]) or '0')
-local estimate = curr + prev * tonumber(ARGV[1])
-if estimate < tonumber(ARGV[2]) then
-	curr = redis.call('INCR', KEYS[1])
-	redis.call('EXPIRE', KEYS[1], ARGV[3])
-	redis.call('EXPIRE', KEYS[2], ARGV[3])
-	return {1, curr, prev}
+local limit = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local now
+if ARGV[3] ~= '' then
+	now = tonumber(ARGV[3])
+else
+	local t = redis.call('TIME')
+	now = tonumber(t[1]) + tonumber(t[2]) / 1000000
 end
-return {0, curr, prev}
+local tick = math.floor(now / window)
+local overlap = 1 - (now - tick * window) / window
+local currkey = KEYS[1] .. ':' .. tick
+local prevkey = KEYS[1] .. ':' .. (tick - 1)
+local curr = tonumber(redis.call('GET', currkey) or '0')
+local prev = tonumber(redis.call('GET', prevkey) or '0')
+local estimate = curr + prev * overlap
+if estimate < limit then
+	curr = redis.call('INCR', currkey)
+	redis.call('EXPIRE', currkey, 2 * window)
+	redis.call('EXPIRE', prevkey, 2 * window)
+	local remaining = math.max(0, math.ceil(limit - (curr + prev * overlap) - 1e-9))
+	return {1, remaining, tostring(now)}
+end
+return {0, 0, tostring(now)}
 `)
 
 type RedisSlidingWindow struct {
@@ -39,7 +53,6 @@ func NewRedisSlidingWindow(client *redis.Client, limit int, window time.Duration
 		limit:  limit,
 		prefix: "rl:sw:",
 		window: window,
-		now:    func() int64 { return time.Now().Unix() },
 	}
 }
 
@@ -55,30 +68,34 @@ func (r *RedisSlidingWindow) fallback(windowEnd, now int64) Decision {
 }
 
 func (r *RedisSlidingWindow) Allow(key string) Decision {
-	now := r.now()
 	windowSec := int64(r.window.Seconds())
-	tick := now / windowSec
-	windowEnd := (tick + 1) * windowSec
-	overlap := 1 - float64(now-tick*windowSec)/float64(windowSec)
+	override := ""
+	if r.now != nil {
+		override = strconv.FormatInt(r.now(), 10)
+	}
 
 	res, err := slidingWindowScript.Run(
 		context.Background(), r.client,
-		[]string{
-			r.prefix + key + ":" + strconv.FormatInt(tick, 10),
-			r.prefix + key + ":" + strconv.FormatInt(tick-1, 10),
-		},
-		overlap, r.limit, 2*windowSec,
+		[]string{r.prefix + key},
+		r.limit, windowSec, override,
 	).Slice()
 	if err != nil || len(res) != 3 {
-		return r.fallback(windowEnd, now)
+		now := time.Now().Unix()
+		return r.fallback((now/windowSec+1)*windowSec, now)
 	}
 
-	allowedFlag, _ := res[0].(int64)
-	curr, _ := res[1].(int64)
-	prev, _ := res[2].(int64)
-	if allowedFlag == 1 {
-		remaining := slidingRemaining(r.limit, int(curr), int(prev), overlap)
-		return Decision{Allowed: true, Remaining: remaining, ResetAt: windowEnd, RetryAfter: 0}
+	allowed, ok1 := res[0].(int64)
+	remaining, ok2 := res[1].(int64)
+	if !ok1 || !ok2 {
+		now := time.Now().Unix()
+		return r.fallback((now/windowSec+1)*windowSec, now)
 	}
-	return Decision{Allowed: false, Remaining: 0, ResetAt: windowEnd, RetryAfter: int(windowEnd - now)}
+	now := redisNumber(res[2])
+	tick := int64(now) / windowSec
+	windowEnd := (tick + 1) * windowSec
+
+	if allowed == 1 {
+		return Decision{Allowed: true, Remaining: int(remaining), ResetAt: windowEnd, RetryAfter: 0}
+	}
+	return Decision{Allowed: false, Remaining: 0, ResetAt: windowEnd, RetryAfter: int(windowEnd - int64(now))}
 }

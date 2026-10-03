@@ -20,22 +20,20 @@ type entry struct {
 }
 
 type FixedWindow struct {
-	store   Store
-	limit   int
-	maxKeys int
-	mutex   sync.Mutex
-	window  time.Duration
-	now     func() int64
+	store  *MemStore
+	limit  int
+	mutex  sync.Mutex
+	window time.Duration
+	now    func() int64
 }
 
 func NewFixedWindow(limit int, window time.Duration, opts ...FixedOption) *FixedWindow {
 	fw := &FixedWindow{
-		store:   NewMemStore(),
-		limit:   limit,
-		maxKeys: defaultMaxKeys,
-		window:  window,
-		now:     func() int64 { return time.Now().Unix() },
+		limit:  limit,
+		window: window,
+		now:    func() int64 { return time.Now().Unix() },
 	}
+	fw.store = NewMemStore(0, fw.now)
 	for _, opt := range opts {
 		opt(fw)
 	}
@@ -44,34 +42,11 @@ func NewFixedWindow(limit int, window time.Duration, opts ...FixedOption) *Fixed
 
 type FixedOption func(*FixedWindow)
 
-func WithFixedStore(s Store) FixedOption {
+func WithFixedStore(s *MemStore) FixedOption {
 	return func(fw *FixedWindow) { fw.store = s }
 }
 
-func (fw *FixedWindow) SetMaxKeys(n int) { fw.maxKeys = n }
-
 func (fw *FixedWindow) Limit() int { return fw.limit }
-
-func (fw *FixedWindow) evict(currTick int64) {
-	if fw.store.Len() < fw.maxKeys {
-		return
-	}
-	for _, k := range fw.store.Keys() {
-		if raw, ok := fw.store.Get(k); ok {
-			var e entry
-			if json.Unmarshal(raw, &e) == nil && e.Tick < currTick-1 {
-				fw.store.Delete(k)
-			}
-		}
-	}
-	if fw.store.Len() < fw.maxKeys {
-		return
-	}
-	for _, k := range fw.store.Keys() {
-		fw.store.Delete(k)
-		break
-	}
-}
 
 func (fw *FixedWindow) Allow(key string) Decision {
 	fw.mutex.Lock()
@@ -84,8 +59,6 @@ func (fw *FixedWindow) Allow(key string) Decision {
 		if json.Unmarshal(raw, val) != nil {
 			val = &entry{Count: 0, Tick: currTick}
 		}
-	} else {
-		fw.evict(currTick)
 	}
 
 	if val.Tick != currTick {

@@ -1,11 +1,13 @@
 package main
 
 import (
-	"log"
+	"context"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/AbePlays/go-rate-limiter-system-design/internal/ui"
@@ -25,7 +27,8 @@ func main() {
 	if v := os.Getenv("TRUSTED_PROXY_HOPS"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 {
-			log.Fatalf("TRUSTED_PROXY_HOPS must be a non-negative integer, got %q", v)
+			slog.Error("bad TRUSTED_PROXY_HOPS", "value", v)
+			os.Exit(1)
 		}
 		hops = n
 	}
@@ -44,9 +47,29 @@ func main() {
 	mux.HandleFunc("POST /{$}", h.Request)
 	mux.HandleFunc("GET /about", h.About)
 
-	addr := ":8080"
-	log.Printf("demo on http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:         ":8080",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		slog.Info("demo listening", "addr", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server failed", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	<-ctx.Done()
+	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutCtx); err != nil {
+		slog.Error("shutdown failed", "err", err)
 	}
 }
